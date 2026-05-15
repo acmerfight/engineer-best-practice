@@ -13,6 +13,7 @@
 | 主题 | 文件 | 状态 |
 |------|------|------|
 | 实时数据推送基础设施（SSE / WebSocket / Pub-Sub） | [realtime-push-infrastructure.md](realtime-push-infrastructure.md) | **推荐 Ably**。备选方案（Cloudflare DO / SSE 自建 / Centrifugo）待补充 |
+| AI Agent Sandbox 中的 Key 安全 | [sandbox-key-security-levels.md](sandbox-key-security-levels.md) | 三级演进：明文注入 → Sentinel + 外部 Proxy（**业界最佳实践**）→ 零 Credential + Kernel 注入 |
 
 ## 每项推荐包含
 
