@@ -10,9 +10,9 @@
 
 1. **在主流托管服务中，唯一在协议层面设计了 exactly-once 投递机制**。Pusher 和 PubNub 均无此设计。对于聊天、交易、协同编辑等场景，这是决定性差异。注意：Ably 自己的文档也承认实践中是"mostly-once"——正常情况下 exactly-once，故障时可能降级为 at-most-once 或 at-least-once。"唯一"的范围是 Ably/Pusher/PubNub/Firebase 对比，非穷举全球所有服务。（依据：Ably idempotency 文档原文 + websocket.org 对比，Pusher/PubNub 官方文档均无此保证。）
 
-2. **可靠性数据最好**。24 个月公开事故对比：客户受影响总分钟 Ably 1,711 vs Pusher 9,661（5.6x）vs PubNub 7,903（4.6x）。（依据：各平台公开状态页 133 个事故分析。注意：分析者为 Ably 联合创始人，但数据源公开可验证。）
+2. **可靠性数据最好**。24 个月公开事故对比：客户受影响总分钟 Ably 1,711 vs Pusher 9,661（5.6x）vs PubNub 7,903（4.6x）。（依据：各平台公开状态页收集 133 个事故、其中 102 个被分析。注意：分析者为 Ably 联合创始人，但数据源公开可验证。）
 
-3. **全球多区域架构 vs 竞品单数据中心**。Ably 700+ PoP、多区域 P2P 复制。Pusher 至今单数据中心（官方文档未提及多区域），全球用户延迟差异大。
+3. **全球多区域主动-主动架构 vs 竞品单集群/app**。Ably 700+ PoP、多区域 P2P 复制、自动故障转移。Pusher 虽有 9 个区域集群可选，但每个 app 只能部署在单个集群中，集群间不互联、不复制（Pusher 官方博客原文："Our clusters are not connected to each other, and this is by design"）。全球用户访问同一 app 必须路由到同一集群，无自动地理故障转移。
 
 **何时不选 Ably：**
 - 只需单向推送、不需要 Ably 级别的协议保证 → SSE 自建（几乎零成本，SSE 自身有 Last-Event-ID 重连机制，实现得当也可做到基本不丢）
@@ -63,7 +63,7 @@ Ably 的架构由四层组成，自底向上：
 
 #### Routing Layer（路由层）
 
-通过 DNS 延迟路由将客户端连接到物理距离最近的数据中心。多 DNS 提供商冗余，自动将不健康区域从解析中摘除。客户端 SDK 连接失败时自动尝试多个全球备用端点（Ably 文档在不同页面分别提到"up to 6 endpoints"和"up to 5 alternative endpoints"，差异可能是 1 个主端点 + 5 个备用）。
+通过 DNS 延迟路由将客户端连接到物理距离最近的数据中心。多 DNS 提供商冗余，自动将不健康区域从解析中摘除。客户端 SDK 连接失败时自动尝试最多 5 个备用端点（1 个主端点 + 5 个备用 = 6 个全球分布端点，两处文档表述一致）。
 
 #### Frontend Layer（前端连接层，无状态）
 
@@ -153,7 +153,7 @@ await channel.publish('msg', 'Hello World');
 ably.close();
 ```
 
-React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvider`。30+ 语言 SDK。
+React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvider`。25+ 客户端 SDK（Ably 定价页标注；websocket.org 文章称 30+，取保守值）。
 
 连接管理、断线恢复、消息去重、有序投递全部由 SDK + 服务端协作完成，开发者只需关注 subscribe 回调里的业务逻辑。
 
@@ -169,7 +169,8 @@ React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvi
 | SLA | 99.999% | Ably 商业承诺 |
 | 实例故障迁移时间 | 8 秒内 | Ably 架构文档 |
 | 全球边缘节点 | 700+ PoP | Ably 官方 |
-| 数据中心 | Ably 不同页面分别提到 15/17 个，存在不一致 | Ably 官方（Four Pillars 页 vs 博客） |
+| 区域（regions） | 11 个 | Ably 架构文档、定价页 |
+| 物理数据中心 | 15-17 个（Four Pillars 页写 17，博客写 15。一个区域可含多个数据中心，与 11 regions 不矛盾） | Ably 官方 |
 | 单 Channel 吞吐上限 | 200 msg/s，13 MiB/s | Ably 官方 |
 
 24 个月公开事故数据对比（来源：各平台公开状态页，分析者为 Ably 联合创始人 Matthew O'Riordan）：
@@ -188,7 +189,7 @@ React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvi
 
 ### 不适用场景
 
-- 纯单向推送且不需要投递保证（SSE 自建更简单更便宜）
+- 纯单向推送且不需要 Ably 级别的协议保证（SSE 自建更简单更便宜）
 - 只是 AI 流式输出（标准 SSE 就够了）
 - 预算极敏感且工程能力强 → Cloudflare DO 或 Centrifugo 自建（成本显著更低，但具体倍数取决于消息量和用法）
 - 需要服务端业务逻辑与连接在同一位置 → Cloudflare Durable Objects
@@ -202,7 +203,7 @@ React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvi
 4. **极端断线恢复场景可能乱序**——Ably 消息排序文档原文承认：如果断线期间维护连接状态的服务器恰好也被回收（"rare situation"），重放消息可能乱序。
 5. **单 Channel 有吞吐上限**（200 msg/s），高吞吐需做 Channel 分片。
 6. **消费计费模型**——成本随用量变化，难以精确预测，高量级需联系销售。
-7. **关键指标均为自报**——可用性（8 个 9）等数字来自 Ably 自身，无独立第三方审计。延迟数据在不同 Ably 材料中表述不一致（websocket.org 文章称 "6.5ms median API latency"，博客称 "99th percentile transmit latency of 6.5ms"，Four Pillars 页面写 < 30ms / < 65ms），本文采用 Four Pillars 页面的分层数据。事故数据基于公开状态页，可验证但分析者有利益关联。数据中心数量在 Ably 不同页面间存在 15/17 的不一致。
+7. **关键指标均为自报**——可用性（8 个 9）等数字来自 Ably 自身，无独立第三方审计。延迟数据在不同 Ably 材料中表述不一致（websocket.org 文章称 "6.5ms median API latency"，博客称 "99th percentile transmit latency of 6.5ms"，Four Pillars 页面写 < 30ms / < 65ms），本文采用 Four Pillars 页面的分层数据。事故数据基于公开状态页，可验证但分析者有利益关联。物理数据中心数量在 Ably 不同页面间存在 15/17 的差异（但 11 regions 在多处一致）。
 8. **Exactly-once 是设计目标而非绝对保证**——Ably idempotency 文档原文承认："In practice, many distributed systems can truly guarantee only 'mostly-once' delivery... when failures occur, some messages may revert to at-most-once or at-least-once semantics."
 
 ### 定价
