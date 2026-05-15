@@ -82,17 +82,26 @@ flowchart TD
     A[Publisher SDK] --> B[Frontend Node]
     B --> C[Core Node - Primary]
 
-    subgraph 持久化 & ACK
-        C --> D["Primary 存储 + 幂等性检查<br/>(检查消息 ID 是否已存在，不存在则存入 Redis，单个原子操作)"]
+    subgraph sub1 [持久化 和 ACK]
+        direction TB
+        D["Primary 存储 + 幂等性检查<br/>(检查消息 ID 是否已存在，不存在则存入 Redis，单个原子操作)"]
         D --> E["复制到 Secondary<br/>(另一个可用区，Redis)"]
-        E --> F["双副本都存好 → 发送 ACK 给 Publisher"]
+        E --> F[双副本都存好]
+        F --> G[发送 ACK 给 Publisher]
     end
 
-    subgraph ACK 后并行扇出
-        F --> H[扇出给本区域所有订阅者]
-        F --> I[P2P 复制到其他活跃区域]
-        F --> J["写入 Cassandra<br/>(如果开了持久化)"]
+    C --> D
+
+    subgraph sub2 [ACK 后并行扇出]
+        direction TB
+        H[扇出给本区域所有订阅者]
+        I[P2P 复制到其他活跃区域]
+        J["写入 Cassandra<br/>(如果开了持久化)"]
     end
+
+    G --> H
+    G --> I
+    G --> J
 ```
 
 > 注：幂等检查与 Primary 存储是原子操作（Ably idempotency 文档原文："persisted at the primary location and checked for uniqueness in a single atomic operation"），不是独立步骤。
