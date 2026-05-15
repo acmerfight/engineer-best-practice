@@ -81,7 +81,7 @@ Ably 的架构由四层组成，自底向上：
 flowchart TD
     A[Publisher SDK] --> B[Frontend Node]
     B --> C[Core Node - Primary]
-    C --> D["Primary 存储 + 幂等性检查<br/>(单个原子操作，Redis)"]
+    C --> D["Primary 存储 + 幂等性检查<br/>(检查消息 ID 是否已存在，不存在则存入 Redis<br/>单个原子操作)"]
     D --> E["复制到 Secondary<br/>(另一个可用区，Redis)"]
     E --> F[双副本都存好]
     F --> G[发送 ACK 给 Publisher]
