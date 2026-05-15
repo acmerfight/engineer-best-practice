@@ -1,9 +1,3 @@
-AI Agent Sandbox 中的 Key 安全：三个级别的演进
-
-AI Agent Sandbox 中的 Key 安全：三个级别的演进
-
-AI Agent Sandbox 中的 Key 安全：三个级别的演进
-
 # AI Agent Sandbox 中的 Key 安全：三个级别的演进
 
 > AI Agent 需要调用外部 API，但 sandbox 内的代码不可信。如何让 agent 能用 key，又拿不到 key？本文基于 Vercel、Docker、Cloudflare、OWASP 等一手资料，梳理业界三个安全级别的演进。
