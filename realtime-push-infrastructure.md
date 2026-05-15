@@ -8,14 +8,14 @@
 
 核心理由（3 条，每条有硬依据）：
 
-1. **唯一提供协议级 exactly-once 投递的托管服务**。Pusher 和 PubNub 均不保证消息不丢不重。对于聊天、交易、协同编辑等场景，这是决定性差异。（依据：Ably 架构文档 idempotency + message ordering 页，Pusher/PubNub 官方文档均无此保证。）
+1. **在主流托管服务中，唯一在协议层面设计了 exactly-once 投递机制**。Pusher 和 PubNub 均无此设计。对于聊天、交易、协同编辑等场景，这是决定性差异。注意：Ably 自己的文档也承认实践中是"mostly-once"——正常情况下 exactly-once，故障时可能降级为 at-most-once 或 at-least-once。"唯一"的范围是 Ably/Pusher/PubNub/Firebase 对比，非穷举全球所有服务。（依据：Ably idempotency 文档原文 + websocket.org 对比，Pusher/PubNub 官方文档均无此保证。）
 
 2. **可靠性数据最好**。24 个月公开事故对比：客户受影响总分钟 Ably 1,711 vs Pusher 9,661（5.6x）vs PubNub 7,903（4.6x）。（依据：各平台公开状态页 133 个事故分析。注意：分析者为 Ably 联合创始人，但数据源公开可验证。）
 
 3. **全球多区域架构 vs 竞品单数据中心**。Ably 700+ PoP、多区域 P2P 复制。Pusher 至今单数据中心（官方文档未提及多区域），全球用户延迟差异大。
 
 **何时不选 Ably：**
-- 只需单向推送、不在乎消息丢失 → SSE 自建（几乎零成本）
+- 只需单向推送、不需要 Ably 级别的协议保证 → SSE 自建（几乎零成本，SSE 自身有 Last-Event-ID 重连机制，实现得当也可做到基本不丢）
 - 需要服务端逻辑与连接在同一位置 → Cloudflare Durable Objects
 - 预算极度敏感、工程能力强 → Centrifugo（开源 Go，自托管）
 
@@ -100,7 +100,7 @@ Publisher SDK → Frontend Node → Core Node (Primary)
 
 > 注：幂等检查与 Primary 存储是原子操作（Ably idempotency 文档原文："persisted at the primary location and checked for uniqueness in a single atomic operation"），不是独立步骤。
 
-**ACK 的含义**：只有当消息在两个不同可用区都存储之后（底层是 Redis 内存存储，通过多副本冗余而非磁盘写入实现 durability），才向发布者发送 ACK。收到 ACK = 消息不会丢。
+**ACK 的含义**：只有当消息在两个不同可用区都存储之后（底层是 Redis 内存存储，通过多副本冗余而非磁盘写入实现 durability），才向发布者发送 ACK。收到 ACK = Ably 保证该消息会被投递给所有订阅者。但端到端的 exactly-once 还依赖订阅侧应用层正确处理消息（Ably idempotency 文档原文："the client processing ensures that any error or exception in processing the message is handled without loss or duplication"）。
 
 **故障恢复**：Core 节点宕机 → Gossip 层检测（心跳丢失）→ 更新 netmap → 一致性哈希计算新归属 → Secondary 接管 → 8 秒内完成迁移。
 
@@ -162,7 +162,8 @@ React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvi
 | 指标 | 数值 | 来源 |
 |------|------|------|
 | 数据中心内 p99 往返延迟 | < 30ms | Ably 官方 |
-| 全球 PoP p99 往返延迟 | < 65ms | Ably 官方 |
+| 全球 PoP p99 往返延迟 | < 65ms（限接收 ≥1% 全球流量的 PoP） | Ably Four Pillars 页面 |
+| 所有 PoP 平均往返延迟 | < 99ms（含偏远节点） | Ably Four Pillars 页面 |
 | 消息可用性（实例故障） | 99.999999%（8 个 9） | Ably 架构文档 |
 | 持久化数据可用性 | 99.99999999%（10 个 9） | Ably Four Pillars 页面 |
 | SLA | 99.999% | Ably 商业承诺 |
@@ -189,9 +190,9 @@ React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvi
 
 - 纯单向推送且不需要投递保证（SSE 自建更简单更便宜）
 - 只是 AI 流式输出（标准 SSE 就够了）
-- 预算极敏感且工程能力强（Cloudflare DO 或 Centrifugo 自建成本低一个数量级）
-- 需要服务端业务逻辑与连接在同一位置（Cloudflare Durable Objects 更合适）
-- 数据主权要求 EU 管辖（Ably 是英国公司，基础设施在 AWS）
+- 预算极敏感且工程能力强 → Cloudflare DO 或 Centrifugo 自建（成本显著更低，但具体倍数取决于消息量和用法）
+- 需要服务端业务逻辑与连接在同一位置 → Cloudflare Durable Objects
+- 数据主权要求 EU 管辖 → Ably 是英国公司，基础设施在 AWS（US Cloud Act）
 
 ### 诚实的局限
 
@@ -201,7 +202,8 @@ React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvi
 4. **极端断线恢复场景可能乱序**——Ably 消息排序文档原文承认：如果断线期间维护连接状态的服务器恰好也被回收（"rare situation"），重放消息可能乱序。
 5. **单 Channel 有吞吐上限**（200 msg/s），高吞吐需做 Channel 分片。
 6. **消费计费模型**——成本随用量变化，难以精确预测，高量级需联系销售。
-7. **关键指标均为自报**——延迟（6.5ms）、可用性（8 个 9）等数字来自 Ably 自身，无独立第三方审计。事故数据基于公开状态页，可验证但分析者有利益关联。数据中心数量在 Ably 不同页面间存在 15/17 的不一致。
+7. **关键指标均为自报**——可用性（8 个 9）等数字来自 Ably 自身，无独立第三方审计。延迟数据在不同 Ably 材料中表述不一致（websocket.org 文章称 "6.5ms median API latency"，博客称 "99th percentile transmit latency of 6.5ms"，Four Pillars 页面写 < 30ms / < 65ms），本文采用 Four Pillars 页面的分层数据。事故数据基于公开状态页，可验证但分析者有利益关联。数据中心数量在 Ably 不同页面间存在 15/17 的不一致。
+8. **Exactly-once 是设计目标而非绝对保证**——Ably idempotency 文档原文承认："In practice, many distributed systems can truly guarantee only 'mostly-once' delivery... when failures occur, some messages may revert to at-most-once or at-least-once semantics."
 
 ### 定价
 
@@ -211,4 +213,4 @@ React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvi
 ### 生产案例
 
 - **HubSpot**：跨 120 国的企业 live chat，26.8 万+企业客户，每月 50 万+关键业务对话，每天 5 亿个 channel。
-- **NASCAR**：赛车遥测数据实时推送，每场比赛 1.3TB 数据（120 更新/秒降采样到 2 次/秒广播），8000 万全球粉丝。
+- **NASCAR**：赛车遥测数据实时推送，每场比赛 1.3TB 数据（120 更新/秒降采样到 2 次/秒广播）。NASCAR 称其 Drive 平台面向 8000 万全球赛车粉丝群体（注：这是 NASCAR 总粉丝数，非 Ably 同时在线数）。
