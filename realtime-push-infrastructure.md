@@ -43,7 +43,7 @@
 
 ### 一句话定位
 
-全球分布式的托管实时消息基础设施。通过原生 WebSocket（降级支持 SSE、MQTT、HTTP 长轮询）在服务端和客户端之间传递消息，提供协议级的消息有序、不丢、不重复保证。
+全球分布式的托管实时消息基础设施。通过原生 WebSocket（降级支持 SSE、MQTT、HTTP 长轮询）在服务端和客户端之间传递消息。在协议层面设计了消息有序、不丢、不重复的机制（正常运行时 exactly-once，故障时可能降级，详见"诚实的局限"章节）。
 
 ### 解决什么问题
 
@@ -169,7 +169,7 @@ React 有官方 hooks（`useChannel`、`usePresence`），Next.js 有 `AblyProvi
 | SLA | 99.999% | Ably 商业承诺 |
 | 实例故障迁移时间 | 8 秒内 | Ably 架构文档 |
 | 全球边缘节点 | 700+ PoP | Ably 官方 |
-| 区域（regions） | 11 个 | Ably 架构文档、定价页 |
+| 区域（regions） | 11+ 个 | Ably 定价页 |
 | 物理数据中心 | 15-17 个（Four Pillars 页写 17，博客写 15。一个区域可含多个数据中心，与 11 regions 不矛盾） | Ably 官方 |
 | 单 Channel 吞吐上限 | 200 msg/s，13 MiB/s | Ably 官方 |
 
