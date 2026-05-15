@@ -77,25 +77,17 @@ Ably 的架构由四层组成，自底向上：
 
 消息处理的关键路径：
 
-```
-Publisher SDK → Frontend Node → Core Node (Primary)
-                                    │
-                                    ↓
-                   Primary 存储 + 幂等性检查（单个原子操作）
-                   检查消息 ID 是否已存在，不存在则存入 Redis
-                                    │
-                                    ↓
-                   复制到 Secondary（另一个可用区，也存入 Redis）
-                                    │
-                                    ↓
-                             双副本都存好
-                                    ↓
-                        发送 ACK 给 Publisher
-                                    ↓
-               ┌────────────┼────────────┐
-               ↓            ↓            ↓
-          扇出给本区域     P2P 复制到      写入 Cassandra
-          所有订阅者      其他活跃区域    （如果开了持久化）
+```mermaid
+flowchart TD
+    A[Publisher SDK] --> B[Frontend Node]
+    B --> C[Core Node - Primary]
+    C --> D["Primary 存储 + 幂等性检查<br/>(单个原子操作，Redis)"]
+    D --> E["复制到 Secondary<br/>(另一个可用区，Redis)"]
+    E --> F[双副本都存好]
+    F --> G[发送 ACK 给 Publisher]
+    G --> H[扇出给本区域所有订阅者]
+    G --> I[P2P 复制到其他活跃区域]
+    G --> J["写入 Cassandra<br/>(如果开了持久化)"]
 ```
 
 > 注：幂等检查与 Primary 存储是原子操作（Ably idempotency 文档原文："persisted at the primary location and checked for uniqueness in a single atomic operation"），不是独立步骤。
